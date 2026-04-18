@@ -1,71 +1,76 @@
-import { useEffect, useRef } from "react";
+export default function CrowdMeter({
+  crowdValue = 50,
+  p1Name,
+  p2Name,
+}) {
+  // ─────────────────────────────
+  // SAFE VALUE (CLAMP 0–100)
+  // ─────────────────────────────
+  const safeCrowd = Math.max(0, Math.min(100, crowdValue));
 
-export default function CrowdMeter({ crowdValue = 50, p1Name = "P1", p2Name = "P2" }) {
-  const barRef = useRef(null);
+  const p2Pct = safeCrowd;
+  const p1Pct = 100 - safeCrowd;
 
-  useEffect(() => {
-    if (barRef.current) {
-      barRef.current.style.transition = "width 1s cubic-bezier(0.34, 1.56, 0.64, 1)";
-      barRef.current.style.width = `${crowdValue}%`;
-    }
-  }, [crowdValue]);
+  // FIX rounding consistency
+  const p2Rounded = Math.round(p2Pct);
+  const p1Rounded = 100 - p2Rounded;
 
-  const p1Pct = crowdValue;
-  const p2Pct = 100 - crowdValue;
+  const safeP1Name = p1Name || "Player 1";
+  const safeP2Name = p2Name || "Player 2";
+
+  // Prevent needle overflow
+  const needlePos = Math.max(2, Math.min(98, p1Pct));
 
   return (
-    <div className="w-full">
+    <div>
+      {/* LABELS */}
       <div className="flex justify-between items-center mb-2">
-        <span className="font-mono text-xs text-white/50 uppercase tracking-widest">Crowd</span>
-        <span className="font-mono text-xs text-white/30">LIVE SUPPORT</span>
+        <span
+          className="font-mono text-xs uppercase tracking-widest"
+          style={{ color: "#ff2d55" }}
+        >
+          {safeP1Name} {p1Rounded}%
+        </span>
+
+        <span className="font-mono text-xs text-white/30 uppercase tracking-widest">
+          CROWD
+        </span>
+
+        <span
+          className="font-mono text-xs uppercase tracking-widest"
+          style={{ color: "#00aaff" }}
+        >
+          {p2Rounded}% {safeP2Name}
+        </span>
       </div>
 
-      {/* Labels */}
-      <div className="flex justify-between mb-1.5">
-        <span className="font-display text-lg tracking-widest" style={{ color: "#ff2d55" }}>
-          {p1Name} <span className="text-sm">{p1Pct}%</span>
-        </span>
-        <span className="font-display text-lg tracking-widest" style={{ color: "#00aaff" }}>
-          <span className="text-sm">{p2Pct}%</span> {p2Name}
-        </span>
-      </div>
-
-      {/* Bar */}
-      <div className="relative h-3 rounded-full overflow-hidden" style={{ background: "#1a1a26", border: "1px solid #2a2a3d" }}>
-        {/* P1 (red) fills from left */}
+      {/* BAR */}
+      <div className="relative h-3 rounded-full overflow-hidden bg-white/5">
+        {/* P1 */}
         <div
-          ref={barRef}
+          className="absolute inset-y-0 left-0 transition-all duration-700"
           style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${crowdValue}%`,
+            width: `${p1Pct}%`,
             background: "linear-gradient(90deg, #ff2d55, #ff6b8a)",
-            borderRadius: "6px",
           }}
         />
-        {/* P2 (blue) fills from right */}
+
+        {/* P2 */}
         <div
+          className="absolute inset-y-0 right-0 transition-all duration-700"
           style={{
-            position: "absolute",
-            right: 0,
-            top: 0,
-            bottom: 0,
-            width: `${100 - crowdValue}%`,
+            width: `${p2Pct}%`,
             background: "linear-gradient(270deg, #00aaff, #66ccff)",
-            borderRadius: "6px",
           }}
         />
-        {/* Center divider */}
+      </div>
+
+      {/* NEEDLE */}
+      <div className="relative h-2">
         <div
+          className="absolute top-0 w-0.5 h-2 bg-white/60 transition-all duration-700"
           style={{
-            position: "absolute",
-            left: "50%",
-            top: 0,
-            bottom: 0,
-            width: "2px",
-            background: "#0a0a0f",
+            left: `${needlePos}%`,
             transform: "translateX(-50%)",
           }}
         />

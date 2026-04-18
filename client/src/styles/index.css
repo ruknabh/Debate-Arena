@@ -25,42 +25,7 @@ body {
   min-height: 100vh;
 }
 
-/* Scanline effect overlay */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.05) 2px,
-    rgba(0, 0, 0, 0.05) 4px
-  );
-  pointer-events: none;
-  z-index: 9999;
-}
-
-/* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--glow); }
-
-/* Utility classes */
-.font-display { font-family: "Bebas Neue", cursive; }
-.font-mono { font-family: "JetBrains Mono", monospace; }
-
-.glow-red { box-shadow: 0 0 30px rgba(255, 45, 85, 0.4); }
-.glow-blue { box-shadow: 0 0 30px rgba(0, 170, 255, 0.4); }
-.glow-gold { box-shadow: 0 0 30px rgba(255, 215, 0, 0.4); }
-.glow-purple { box-shadow: 0 0 30px rgba(124, 58, 237, 0.4); }
-
-.text-glow-red { text-shadow: 0 0 20px rgba(255, 45, 85, 0.8); }
-.text-glow-blue { text-shadow: 0 0 20px rgba(0, 170, 255, 0.8); }
-.text-glow-gold { text-shadow: 0 0 20px rgba(255, 215, 0, 0.8); }
-
-/* Arena grid background */
+/* Background grid */
 .arena-bg {
   background-color: var(--bg);
   background-image:
@@ -69,155 +34,53 @@ body::before {
   background-size: 40px 40px;
 }
 
-/* Card styles */
+/* Card */
 .arena-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  transition: border-color 0.3s ease;
-}
-.arena-card:hover {
-  border-color: rgba(124, 58, 237, 0.4);
+  padding: 16px;
 }
 
-/* Input styles */
-.arena-input {
-  background: rgba(255,255,255,0.04);
+/* INPUT */
+.input {
+  background: rgba(255,255,255,0.05);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  color: #fff;
-  font-family: "DM Sans", sans-serif;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  resize: none;
-  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  color: white;
 }
-.arena-input:focus {
-  outline: none;
-  border-color: rgba(124, 58, 237, 0.6);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
-}
-.arena-input::placeholder { color: rgba(255,255,255,0.2); }
 
-/* Button base */
+/* BUTTONS */
 .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border-radius: 8px;
-  font-family: "DM Sans", sans-serif;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-}
-.btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  transform: none !important;
-}
-
-.btn-primary {
   background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  padding: 10px 16px;
+  border-radius: 8px;
   color: white;
-  padding: 12px 28px;
+  transition: 0.2s;
 }
-.btn-primary:hover:not(:disabled) {
+.btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5);
 }
 
-.btn-red {
-  background: linear-gradient(135deg, #ff2d55, #c0102f);
-  color: white;
-  padding: 12px 24px;
-}
-.btn-red:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(255, 45, 85, 0.5);
-}
-
-.btn-blue {
-  background: linear-gradient(135deg, #00aaff, #0066cc);
-  color: white;
-  padding: 12px 24px;
-}
-.btn-blue:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 170, 255, 0.5);
-}
-
-.btn-outline {
+.btn-secondary {
   background: transparent;
   border: 1px solid var(--border);
-  color: rgba(255,255,255,0.7);
-  padding: 10px 20px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  color: #aaa;
 }
-.btn-outline:hover:not(:disabled) {
+.btn-secondary:hover {
   border-color: var(--glow);
-  color: #fff;
+  color: white;
 }
 
-/* Score badge */
-.score-badge {
+/* Glow */
+.glow-purple {
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.4);
+}
+
+/* Fonts */
+.font-display {
   font-family: "Bebas Neue", cursive;
-  font-size: 3rem;
-  line-height: 1;
-  letter-spacing: 2px;
 }
-
-/* Crowd meter */
-.crowd-meter-bar {
-  height: 12px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, var(--blue), var(--red));
-  position: relative;
-  overflow: hidden;
-}
-
-/* Typing cursor */
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-.typing-cursor::after {
-  content: "▊";
-  animation: blink 0.8s step-end infinite;
-  color: var(--glow);
-  font-size: 0.85em;
-}
-
-/* Shimmer loading */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.shimmer {
-  background: linear-gradient(
-    90deg,
-    rgba(255,255,255,0.03) 0%,
-    rgba(255,255,255,0.08) 50%,
-    rgba(255,255,255,0.03) 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-}
-
-/* Round badge */
-.round-badge {
-  background: linear-gradient(135deg, #7c3aed22, #7c3aed44);
-  border: 1px solid #7c3aed66;
-  border-radius: 20px;
-  padding: 4px 16px;
-  font-family: "Bebas Neue", cursive;
-  letter-spacing: 3px;
-  font-size: 0.9rem;
-  color: #a78bfa;
-}
-
-/* Win/loss flash */
-@keyframes winFlash {
-  0%, 100% { background-color: transparent; }
-  50% { background-color: rgba(255, 215, 0, 0.05); }
-}
-.win-flash { animation: winFlash 0.6s ease-in-out 3; }

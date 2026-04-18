@@ -6,71 +6,133 @@ let socketInstance = null;
 
 export function useSocket() {
   const socketRef = useRef(null);
+
   const {
-    gameId,
+    roomCode,
     setConnectionStatus,
     appendStream,
     resetStream,
     setIsStreaming,
     setLastScores,
+    setRoom,
     setGame,
     setPhase,
     setError,
+    setOpponentReady,
+    setMyArgSubmitted,
+    setOpponentArgSubmitted,
   } = useGameStore();
 
+  // ─────────────────────────────
+  // INIT SOCKET (ONLY ONCE)
+  // ─────────────────────────────
   useEffect(() => {
-    // Create single socket connection
     if (!socketInstance) {
       socketInstance = io("http://localhost:3001", {
         transports: ["websocket"],
       });
     }
-    socketRef.current = socketInstance;
 
+    socketRef.current = socketInstance;
     const socket = socketRef.current;
 
-    socket.on("connect", () => {
-      setConnectionStatus("connected");
-    });
-    socket.on("disconnect", () => {
-      setConnectionStatus("disconnected");
-    });
-    socket.on("connect_error", () => {
-      setConnectionStatus("error");
+    const onConnect = () => setConnectionStatus("connected");
+    const onDisconnect = () => setConnectionStatus("disconnected");
+    const onError = () => setConnectionStatus("error");
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("connect_error", onError);
+
+    // MATCH FOUND
+    socket.on("match:found", ({ roomCode, role, room }) => {
+      const store = useGameStore.getState();
+
+      store.setRoomCode(roomCode);
+      store.setMyRole(role);
+      store.setRoom(room);
+      store.setIsMatchmaking(false);
+
+      // join socket room
+      socket.emit("room:join", { roomCode });
+
+      store.setPhase("lobby");
     });
 
     return () => {
-      socket.off("connect");
-      socket.off("disconnect");
-      socket.off("connect_error");
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("connect_error", onError);
+      socket.off("match:found");
     };
   }, []);
 
-  // Subscribe to game-specific events when gameId changes
+  // ─────────────────────────────
+  // ROOM-SCOPED EVENTS
+  // ─────────────────────────────
   useEffect(() => {
-    if (!gameId || !socketRef.current) return;
+    if (!roomCode || !socketRef.current) return;
+
     const socket = socketRef.current;
 
-    const onStream = ({ chunk }) => {
-      setIsStreaming(true);
-      appendStream(chunk);
+    // JOIN ROOM (important for refresh cases)
+    socket.emit("room:join", { roomCode });
+
+    const onJoined = ({ room }) => {
+      setRoom(room);
+
+      // If both players exist → ready
+      if (room?.players?.p1 && room?.players?.p2) {
+        setOpponentReady(true);
+      }
     };
 
-    const onScores = ({ scores, game, roundNumber }) => {
-      setLastScores({ scores, roundNumber });
-      setGame(game);
-      setIsStreaming(false);
-      if (game.status === "finished") {
-        setPhase("final");
+    const onOpponentJoined = ({ room }) => {
+      setRoom(room);
+      setOpponentReady(true);
+    };
+
+    const onStream = ({ chunk }) => {
+      appendStream(chunk);
+      setIsStreaming(true);
+    };
+
+    const onScores = ({ scores, room }) => {
+      const store = useGameStore.getState();
+
+      store.setLastScores(scores);
+      store.setRoom(room);
+      store.setGame(room);
+      store.setIsStreaming(false);
+      store.resetRound();
+
+      if (room.status === "finished") {
+        store.setPhase("final");
       } else {
-        setPhase("results");
+        store.setPhase("results");
       }
     };
 
     const onStatus = ({ status }) => {
+      const store = useGameStore.getState();
+
       if (status === "judging") {
-        resetStream();
-        setPhase("judging");
+        store.resetStream();
+        store.setPhase("judging");
+      }
+
+      if (status === "debating") {
+        store.setPhase("debate");
+      }
+    };
+
+    const onArgSubmitted = ({ role }) => {
+      const store = useGameStore.getState();
+
+      if (role === store.myRole) {
+        store.setMyArgSubmitted(true);
+      } else {
+        store.setOpponentArgSubmitted(true);
       }
     };
 
@@ -80,18 +142,50 @@ export function useSocket() {
       setPhase("debate");
     };
 
-    socket.on(`game:${gameId}:stream`, onStream);
-    socket.on(`game:${gameId}:scores`, onScores);
-    socket.on(`game:${gameId}:status`, onStatus);
-    socket.on(`game:${gameId}:error`, onError);
+    const onOpponentLeft = ({ room }) => {
+      setError("Opponent disconnected. You win by default!");
+      setRoom(room);
+      setPhase("final");
+    };
+
+    const onRematchStart = ({ room }) => {
+      const store = useGameStore.getState();
+
+      store.setRoom(room);
+      store.resetRound();
+      store.setPhase("debate");
+    };
+
+    // REGISTER EVENTS
+    socket.on("room:joined", onJoined);
+    socket.on("room:opponent-joined", onOpponentJoined);
+    socket.on("game:stream", onStream);
+    socket.on("game:scores", onScores);
+    socket.on("game:status", onStatus);
+    socket.on("game:arg-submitted", onArgSubmitted);
+    socket.on("game:error", onError);
+    socket.on("room:opponent-left", onOpponentLeft);
+    socket.on("room:rematch-start", onRematchStart);
 
     return () => {
-      socket.off(`game:${gameId}:stream`, onStream);
-      socket.off(`game:${gameId}:scores`, onScores);
-      socket.off(`game:${gameId}:status`, onStatus);
-      socket.off(`game:${gameId}:error`, onError);
+      socket.off("room:joined", onJoined);
+      socket.off("room:opponent-joined", onOpponentJoined);
+      socket.off("game:stream", onStream);
+      socket.off("game:scores", onScores);
+      socket.off("game:status", onStatus);
+      socket.off("game:arg-submitted", onArgSubmitted);
+      socket.off("game:error", onError);
+      socket.off("room:opponent-left", onOpponentLeft);
+      socket.off("room:rematch-start", onRematchStart);
     };
-  }, [gameId]);
+  }, [roomCode]);
 
   return socketRef.current;
+}
+
+// ─────────────────────────────
+// ACCESS SOCKET OUTSIDE HOOK
+// ─────────────────────────────
+export function getSocket() {
+  return socketInstance;
 }
