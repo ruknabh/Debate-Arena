@@ -49,7 +49,6 @@ app.post("/api/room/create", (req, res) => {
   const { topic, player1Name, socketId } = req.body;
   if (!topic || !socketId)
     return res.status(400).json({ error: "Missing fields" });
-
   const room = createRoom(topic, socketId, player1Name);
   res.json({ roomCode: room.code, room, role: "p1" });
 });
@@ -58,20 +57,16 @@ app.post("/api/room/join", (req, res) => {
   const { code, playerName, socketId } = req.body;
   if (!code || !socketId)
     return res.status(400).json({ error: "Missing fields" });
-
   const { room, error } = joinRoom(code, socketId, playerName);
   if (error) return res.status(400).json({ error });
-
   res.json({ roomCode: code, room, role: "p2" });
 });
 
 app.post("/api/room/queue", (req, res) => {
   const { playerName, socketId } = req.body;
   if (!socketId) return res.status(400).json({ error: "socketId required" });
-
   addToQueue(socketId, playerName);
   const matched = tryMatch(io);
-
   res.json(
     matched
       ? { status: "matched", room: matched }
@@ -104,110 +99,177 @@ async function judgeRound(room) {
   room.status = "judging";
   io.to(room.code).emit("game:status", { status: "judging", room });
 
-  const prompt = `Evaluate debate strictly and return JSON only...`;
+  // KEY FIX: No example numbers in the prompt — use X as placeholder
+  // so the AI cannot copy-paste the example values back as its answer
+  const prompt = `You are a strict, impartial debate judge. You must carefully read BOTH arguments below and score them honestly based on their actual content.
+
+TOPIC: "${room.topic}"
+
+PLAYER 1 ARGUMENT:
+"${p1Arg}"
+
+PLAYER 2 ARGUMENT:
+"${p2Arg}"
+
+Score each player 1-10 on each of these 6 criteria based ONLY on what they actually wrote above:
+- logic: how rational and well-reasoned is the argument
+- evidence: does it cite facts, examples, or data
+- rebuttal: does it address the opposing side
+- clarity: is it clear and well-structured
+- persuasion: how convincing is it overall
+- creativity: originality and freshness of the argument
+
+IMPORTANT RULES:
+- Scores MUST reflect the actual quality of each argument
+- If one argument is weak, its scores should be low (1-4)
+- If one argument is strong, its scores should be high (7-10)
+- Do NOT give the same scores to both players unless they are truly equal
+- The roundWinner must be whoever scored higher total points
+- If totals are equal it must be "draw"
+
+Respond with ONLY valid JSON, no markdown fences, no explanation text:
+{"p1":{"logic":X,"evidence":X,"rebuttal":X,"clarity":X,"persuasion":X,"creativity":X,"total":X},"p2":{"logic":X,"evidence":X,"rebuttal":X,"clarity":X,"persuasion":X,"creativity":X,"total":X},"roundWinner":"p1or p2 or draw","verdict":"One sentence explaining who won and why based on the actual arguments."}`;
 
   try {
     const response = await axios.post(
       "https://openrouter.ai/api/v1/chat/completions",
       {
         model: "openai/gpt-4o-mini",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          {
+            role: "system",
+            content: "You are a debate judge. You MUST score arguments based on their actual content. Never return placeholder or example values. Always read both arguments carefully before scoring.",
+          },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.7, // higher temperature = more varied, less cached responses
       },
       {
         headers: {
           Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          "Content-Type": "application/json",
         },
       }
     );
 
     const text = response.data.choices?.[0]?.message?.content || "";
+    console.log("🤖 AI raw response:", text);
 
     let scores;
     try {
-      const clean = text.replace(/```json|```/g, "").trim();
-      scores = JSON.parse(clean.match(/\{[\s\S]*\}/)[0]);
-    } catch {
-      io.to(room.code).emit("game:error", {
-        message: "AI parse failed",
-      });
+      const clean = text.replace(/```json/gi, "").replace(/```/g, "").trim();
+      const match = clean.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("No JSON found in response");
+      scores = JSON.parse(match[0]);
+    } catch (parseErr) {
+      console.error("❌ JSON parse failed:", parseErr.message);
+      io.to(room.code).emit("game:error", { message: "Judge failed to parse response. Try again." });
       room.status = "debating";
+      io.to(room.code).emit("game:status", { status: "debating", room });
       return;
     }
 
+    // Validate structure
+    if (!scores.p1 || !scores.p2) {
+      console.error("❌ Invalid scores structure:", scores);
+      io.to(room.code).emit("game:error", { message: "Invalid judge response structure." });
+      room.status = "debating";
+      io.to(room.code).emit("game:status", { status: "debating", room });
+      return;
+    }
+
+    // Always recalculate totals ourselves — never trust the AI's total field
     const calc = (p) =>
-      (p.logic || 0) +
-      (p.evidence || 0) +
-      (p.rebuttal || 0) +
-      (p.clarity || 0) +
-      (p.persuasion || 0) +
-      (p.creativity || 0);
+      (p.logic || 0) + (p.evidence || 0) + (p.rebuttal || 0) +
+      (p.clarity || 0) + (p.persuasion || 0) + (p.creativity || 0);
 
-    scores.p1.total ??= calc(scores.p1);
-    scores.p2.total ??= calc(scores.p2);
+    scores.p1.total = calc(scores.p1);
+    scores.p2.total = calc(scores.p2);
 
+    // Always recalculate roundWinner from totals — never trust AI's roundWinner
+    // This fixes the "both 39 but p1 wins" bug
+    if (scores.p1.total > scores.p2.total) {
+      scores.roundWinner = "p1";
+    } else if (scores.p2.total > scores.p1.total) {
+      scores.roundWinner = "p2";
+    } else {
+      scores.roundWinner = "draw";
+    }
+
+    console.log(`📊 Calculated scores: p1=${scores.p1.total} p2=${scores.p2.total} winner=${scores.roundWinner}`);
+
+    // Update cumulative scores
     room.players.p1.score += scores.p1.total;
     room.players.p2.score += scores.p2.total;
 
+    // Update stat totals
+    room.players.p1.totalLogic = (room.players.p1.totalLogic || 0) + (scores.p1.logic || 0);
+    room.players.p1.totalCreativity = (room.players.p1.totalCreativity || 0) + (scores.p1.creativity || 0);
+    room.players.p1.totalPersuasion = (room.players.p1.totalPersuasion || 0) + (scores.p1.persuasion || 0);
+    room.players.p2.totalLogic = (room.players.p2.totalLogic || 0) + (scores.p2.logic || 0);
+    room.players.p2.totalCreativity = (room.players.p2.totalCreativity || 0) + (scores.p2.creativity || 0);
+    room.players.p2.totalPersuasion = (room.players.p2.totalPersuasion || 0) + (scores.p2.persuasion || 0);
+
+    // Crowd meter — moves toward winner
+    if (scores.roundWinner === "p1") {
+      room.crowdMeter = Math.max(0, room.crowdMeter - 15);
+    } else if (scores.roundWinner === "p2") {
+      room.crowdMeter = Math.min(100, room.crowdMeter + 15);
+    }
+
+    // Store result
     currentRound.result = scores;
 
+    // Advance round or finish — clearArguments handles this
     clearArguments(room);
 
+    // Determine overall game winner if finished
     if (room.status === "finished") {
       room.winner =
-        room.players.p1.score > room.players.p2.score
-          ? "p1"
-          : room.players.p2.score > room.players.p1.score
-          ? "p2"
-          : "draw";
+        room.players.p1.score > room.players.p2.score ? "p1"
+        : room.players.p2.score > room.players.p1.score ? "p2"
+        : "draw";
+      console.log(`🏆 Game finished! Winner: ${room.winner}`);
     } else {
       room.status = "debating";
     }
 
+    // Emit scores — client handles phase transition
     io.to(room.code).emit("game:scores", { scores, room });
+
   } catch (err) {
-    console.error(err.message);
+    console.error("❌ judgeRound error:", err.message);
+    io.to(room.code).emit("game:error", { message: "Judging failed. Please try again." });
     room.status = "debating";
+    io.to(room.code).emit("game:status", { status: "debating", room });
   }
 }
 
 /* =========================
-   SOCKETS (FIXED)
+   SOCKETS
 ========================= */
 
 io.on("connection", (socket) => {
   console.log("🔌", socket.id);
 
   socket.on("room:join", ({ roomCode }) => {
+    if (!roomCode) return;
     const room = getRoomByCode(roomCode);
     if (!room) return;
-
     socket.join(roomCode);
-
     const role = getRoleInRoom(room, socket.id);
-
-    // ✅ Send full state to joining player
     socket.emit("room:joined", { room, role });
-
-    // ✅ FIX: Send room to opponent
     socket.to(roomCode).emit("room:opponent-joined", { room });
   });
 
   socket.on("room:submit-arg", ({ roomCode, argument }) => {
     const room = getRoomByCode(roomCode);
     if (!room || room.status === "judging") return;
-
     const role = getRoleInRoom(room, socket.id);
     if (!role) return;
-
     const result = submitArgument(room, role, argument);
     if (result.error) return;
-
-    io.to(roomCode).emit("game:arg-submitted", {
-      role,
-      bothReady: result.bothReady,
-      room, // ✅ keep UI synced
-    });
-
+    io.to(roomCode).emit("game:arg-submitted", { role, bothReady: result.bothReady, room });
     if (result.bothReady && room.status !== "judging") {
       judgeRound(room);
     }
@@ -216,24 +278,14 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const res = handleDisconnect(socket.id);
     if (!res) return;
-
-    if (!res.deleted) {
-      // ✅ FIX: send updated room state
-      io.to(res.room.code).emit("room:opponent-left", {
-        room: res.room,
-      });
+    if (!res.deleted && res.room) {
+      io.to(res.room.code).emit("room:opponent-left", { room: res.room });
     }
-
     removeFromQueue(socket.id);
   });
 });
 
-/* =========================
-   START SERVER
-========================= */
-
 const PORT = process.env.PORT || 3001;
-
 server.listen(PORT, () => {
   console.log(`🚀 Server running on ${PORT}`);
 });

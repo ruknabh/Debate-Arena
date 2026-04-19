@@ -1,60 +1,30 @@
 import { create } from "zustand";
 
 export const useGameStore = create((set, get) => ({
-  // ─────────────────────────────
-  // PHASE CONTROL
-  // ─────────────────────────────
-  // home | lobby | debate | judging | results | final
   phase: "home",
-
-  // ─────────────────────────────
-  // ROOM / PLAYER INFO
-  // ─────────────────────────────
   roomCode: null,
-  myRole: null, // "p1" | "p2"
+  myRole: null,
   myName: "",
   room: null,
-
-  // Derived (compat)
   gameId: null,
   game: null,
-
-  // ─────────────────────────────
-  // CONNECTION / SOCKET STATE
-  // ─────────────────────────────
   connectionStatus: "disconnected",
-
-  // ─────────────────────────────
-  // STREAM / AI STATE
-  // ─────────────────────────────
   streamText: "",
   isStreaming: false,
   lastScores: null,
   error: null,
-
-  // ─────────────────────────────
-  // MULTIPLAYER STATE
-  // ─────────────────────────────
   opponentReady: false,
   myArgSubmitted: false,
   opponentArgSubmitted: false,
   isMatchmaking: false,
 
-  // ─────────────────────────────
-  // SETTERS
-  // ─────────────────────────────
   setPhase: (phase) => set({ phase }),
 
-  setRoomCode: (roomCode) =>
-    set({
-      roomCode,
-      gameId: roomCode,
-    }),
+  setRoomCode: (roomCode) => set({ roomCode, gameId: roomCode }),
 
   setMyRole: (myRole) => set({ myRole }),
   setMyName: (myName) => set({ myName }),
 
-  // 🔥 IMPORTANT: Always sync room + derived fields
   setRoom: (room) =>
     set({
       room,
@@ -63,34 +33,18 @@ export const useGameStore = create((set, get) => ({
       gameId: room?.code || null,
     }),
 
-  setGameId: (gameId) =>
-    set({
-      gameId,
-      roomCode: gameId,
-    }),
-
-  setGame: (game) =>
-    set({
-      game,
-      room: game,
-    }),
+  setGameId: (gameId) => set({ gameId, roomCode: gameId }),
+  setGame: (game) => set({ game, room: game }),
 
   setStreamText: (streamText) => set({ streamText }),
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setLastScores: (lastScores) => set({ lastScores }),
   setError: (error) => set({ error }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus }),
-
   setOpponentReady: (opponentReady) => set({ opponentReady }),
   setMyArgSubmitted: (myArgSubmitted) => set({ myArgSubmitted }),
-  setOpponentArgSubmitted: (opponentArgSubmitted) =>
-    set({ opponentArgSubmitted }),
-
+  setOpponentArgSubmitted: (opponentArgSubmitted) => set({ opponentArgSubmitted }),
   setIsMatchmaking: (isMatchmaking) => set({ isMatchmaking }),
-
-  // ─────────────────────────────
-  // HELPERS
-  // ─────────────────────────────
 
   appendStream: (chunk) =>
     set((state) => ({
@@ -98,24 +52,21 @@ export const useGameStore = create((set, get) => ({
       isStreaming: true,
     })),
 
-  resetStream: () =>
-    set({
-      streamText: "",
-      isStreaming: false,
-    }),
+  resetStream: () => set({ streamText: "", isStreaming: false }),
 
-  // 🔥 ROUND RESET (very important for multiplayer)
+  // KEY FIX: resetRound only resets submission state and stream.
+  // It does NOT clear lastScores — that stays until the next round starts
+  // so the results screen can display scores after judging.
   resetRound: () =>
     set({
       myArgSubmitted: false,
       opponentArgSubmitted: false,
-      lastScores: null,
+      lastScores: null,   // clear here — called by "Next Round" button click
       streamText: "",
       isStreaming: false,
       error: null,
     }),
 
-  // 🔥 FULL GAME RESET
   resetGame: () =>
     set({
       phase: "home",
@@ -125,35 +76,23 @@ export const useGameStore = create((set, get) => ({
       room: null,
       gameId: null,
       game: null,
-
       streamText: "",
       isStreaming: false,
       lastScores: null,
       error: null,
-
       opponentReady: false,
       myArgSubmitted: false,
       opponentArgSubmitted: false,
       isMatchmaking: false,
-
       connectionStatus: "disconnected",
     }),
 
-  // ─────────────────────────────
-  // DERIVED HELPERS (NEW 🔥)
-  // ─────────────────────────────
-
-  // Get opponent info safely
   getOpponent: () => {
     const { room, myRole } = get();
     if (!room) return null;
-
-    return myRole === "p1"
-      ? room.players?.p2
-      : room.players?.p1;
+    return myRole === "p1" ? room.players?.p2 : room.players?.p1;
   },
 
-  // Check if both players are present
   isRoomReady: () => {
     const { room } = get();
     return !!(room?.players?.p1 && room?.players?.p2);

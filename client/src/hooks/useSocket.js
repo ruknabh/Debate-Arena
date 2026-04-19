@@ -13,19 +13,15 @@ export function useSocket() {
     appendStream,
     resetStream,
     setIsStreaming,
-    setLastScores,
     setRoom,
     setGame,
     setPhase,
     setError,
     setOpponentReady,
-    setMyArgSubmitted,
     setOpponentArgSubmitted,
   } = useGameStore();
 
-  // ─────────────────────────────
   // INIT SOCKET (ONLY ONCE)
-  // ─────────────────────────────
   useEffect(() => {
     if (!socketInstance) {
       socketInstance = io("http://localhost:3001", {
@@ -44,18 +40,13 @@ export function useSocket() {
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onError);
 
-    // MATCH FOUND
     socket.on("match:found", ({ roomCode, role, room }) => {
       const store = useGameStore.getState();
-
       store.setRoomCode(roomCode);
       store.setMyRole(role);
       store.setRoom(room);
       store.setIsMatchmaking(false);
-
-      // join socket room
       socket.emit("room:join", { roomCode });
-
       store.setPhase("lobby");
     });
 
@@ -67,28 +58,27 @@ export function useSocket() {
     };
   }, []);
 
-  // ─────────────────────────────
   // ROOM-SCOPED EVENTS
-  // ─────────────────────────────
   useEffect(() => {
     if (!roomCode || !socketRef.current) return;
 
     const socket = socketRef.current;
 
-    // JOIN ROOM (important for refresh cases)
-    socket.emit("room:join", { roomCode });
-
     const onJoined = ({ room }) => {
-      setRoom(room);
-
-      // If both players exist → ready
+      if (room) {
+        setRoom(room);
+        setGame(room);
+      }
       if (room?.players?.p1 && room?.players?.p2) {
         setOpponentReady(true);
       }
     };
 
     const onOpponentJoined = ({ room }) => {
-      setRoom(room);
+      if (room) {
+        setRoom(room);
+        setGame(room);
+      }
       setOpponentReady(true);
     };
 
@@ -97,15 +87,22 @@ export function useSocket() {
       setIsStreaming(true);
     };
 
+    // KEY FIX: Do NOT call resetRound() here.
+    // resetRound() clears lastScores which the results screen needs to display.
+    // Instead only update room + lastScores + phase.
+    // The user will trigger resetRound() themselves when clicking "Next Round".
     const onScores = ({ scores, room }) => {
       const store = useGameStore.getState();
 
-      store.setLastScores(scores);
+      // Update room state (has new scores, currentRound already advanced by server)
       store.setRoom(room);
       store.setGame(room);
       store.setIsStreaming(false);
-      store.resetRound();
 
+      // Store scores for display — DO NOT clear them here
+      store.setLastScores(scores);
+
+      // Transition to results or final
       if (room.status === "finished") {
         store.setPhase("final");
       } else {
@@ -115,12 +112,10 @@ export function useSocket() {
 
     const onStatus = ({ status }) => {
       const store = useGameStore.getState();
-
       if (status === "judging") {
         store.resetStream();
         store.setPhase("judging");
       }
-
       if (status === "debating") {
         store.setPhase("debate");
       }
@@ -128,7 +123,6 @@ export function useSocket() {
 
     const onArgSubmitted = ({ role }) => {
       const store = useGameStore.getState();
-
       if (role === store.myRole) {
         store.setMyArgSubmitted(true);
       } else {
@@ -144,19 +138,21 @@ export function useSocket() {
 
     const onOpponentLeft = ({ room }) => {
       setError("Opponent disconnected. You win by default!");
-      setRoom(room);
+      if (room) {
+        setRoom(room);
+        setGame(room);
+      }
       setPhase("final");
     };
 
     const onRematchStart = ({ room }) => {
       const store = useGameStore.getState();
-
       store.setRoom(room);
+      store.setGame(room);
       store.resetRound();
       store.setPhase("debate");
     };
 
-    // REGISTER EVENTS
     socket.on("room:joined", onJoined);
     socket.on("room:opponent-joined", onOpponentJoined);
     socket.on("game:stream", onStream);
@@ -183,9 +179,6 @@ export function useSocket() {
   return socketRef.current;
 }
 
-// ─────────────────────────────
-// ACCESS SOCKET OUTSIDE HOOK
-// ─────────────────────────────
 export function getSocket() {
   return socketInstance;
 }
