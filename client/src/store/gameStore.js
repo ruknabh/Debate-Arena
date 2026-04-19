@@ -18,6 +18,11 @@ export const useGameStore = create((set, get) => ({
   opponentArgSubmitted: false,
   isMatchmaking: false,
 
+  // Rematch state
+  rematchRequested: false,       // I sent a rematch request, waiting for opponent
+  rematchIncoming: false,        // Opponent sent a rematch request, need to respond
+  rematchDeclined: false,        // Opponent declined my request
+
   setPhase: (phase) => set({ phase }),
 
   setRoomCode: (roomCode) => set({ roomCode, gameId: roomCode }),
@@ -46,6 +51,10 @@ export const useGameStore = create((set, get) => ({
   setOpponentArgSubmitted: (opponentArgSubmitted) => set({ opponentArgSubmitted }),
   setIsMatchmaking: (isMatchmaking) => set({ isMatchmaking }),
 
+  setRematchRequested: (v) => set({ rematchRequested: v }),
+  setRematchIncoming: (v) => set({ rematchIncoming: v }),
+  setRematchDeclined: (v) => set({ rematchDeclined: v }),
+
   appendStream: (chunk) =>
     set((state) => ({
       streamText: state.streamText + chunk,
@@ -54,14 +63,11 @@ export const useGameStore = create((set, get) => ({
 
   resetStream: () => set({ streamText: "", isStreaming: false }),
 
-  // KEY FIX: resetRound only resets submission state and stream.
-  // It does NOT clear lastScores — that stays until the next round starts
-  // so the results screen can display scores after judging.
   resetRound: () =>
     set({
       myArgSubmitted: false,
       opponentArgSubmitted: false,
-      lastScores: null,   // clear here — called by "Next Round" button click
+      lastScores: null,
       streamText: "",
       isStreaming: false,
       error: null,
@@ -85,6 +91,9 @@ export const useGameStore = create((set, get) => ({
       opponentArgSubmitted: false,
       isMatchmaking: false,
       connectionStatus: "disconnected",
+      rematchRequested: false,
+      rematchIncoming: false,
+      rematchDeclined: false,
     }),
 
   getOpponent: () => {

@@ -99,8 +99,6 @@ async function judgeRound(room) {
   room.status = "judging";
   io.to(room.code).emit("game:status", { status: "judging", room });
 
-  // KEY FIX: No example numbers in the prompt — use X as placeholder
-  // so the AI cannot copy-paste the example values back as its answer
   const prompt = `You are a strict, impartial debate judge. You must carefully read BOTH arguments below and score them honestly based on their actual content.
 
 TOPIC: "${room.topic}"
@@ -142,7 +140,7 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
           },
           { role: "user", content: prompt },
         ],
-        temperature: 0.7, // higher temperature = more varied, less cached responses
+        temperature: 0.7,
       },
       {
         headers: {
@@ -169,7 +167,6 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
       return;
     }
 
-    // Validate structure
     if (!scores.p1 || !scores.p2) {
       console.error("❌ Invalid scores structure:", scores);
       io.to(room.code).emit("game:error", { message: "Invalid judge response structure." });
@@ -178,7 +175,6 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
       return;
     }
 
-    // Always recalculate totals ourselves — never trust the AI's total field
     const calc = (p) =>
       (p.logic || 0) + (p.evidence || 0) + (p.rebuttal || 0) +
       (p.clarity || 0) + (p.persuasion || 0) + (p.creativity || 0);
@@ -186,8 +182,6 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
     scores.p1.total = calc(scores.p1);
     scores.p2.total = calc(scores.p2);
 
-    // Always recalculate roundWinner from totals — never trust AI's roundWinner
-    // This fixes the "both 39 but p1 wins" bug
     if (scores.p1.total > scores.p2.total) {
       scores.roundWinner = "p1";
     } else if (scores.p2.total > scores.p1.total) {
@@ -198,11 +192,9 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
 
     console.log(`📊 Calculated scores: p1=${scores.p1.total} p2=${scores.p2.total} winner=${scores.roundWinner}`);
 
-    // Update cumulative scores
     room.players.p1.score += scores.p1.total;
     room.players.p2.score += scores.p2.total;
 
-    // Update stat totals
     room.players.p1.totalLogic = (room.players.p1.totalLogic || 0) + (scores.p1.logic || 0);
     room.players.p1.totalCreativity = (room.players.p1.totalCreativity || 0) + (scores.p1.creativity || 0);
     room.players.p1.totalPersuasion = (room.players.p1.totalPersuasion || 0) + (scores.p1.persuasion || 0);
@@ -210,20 +202,15 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
     room.players.p2.totalCreativity = (room.players.p2.totalCreativity || 0) + (scores.p2.creativity || 0);
     room.players.p2.totalPersuasion = (room.players.p2.totalPersuasion || 0) + (scores.p2.persuasion || 0);
 
-    // Crowd meter — moves toward winner
     if (scores.roundWinner === "p1") {
       room.crowdMeter = Math.max(0, room.crowdMeter - 15);
     } else if (scores.roundWinner === "p2") {
       room.crowdMeter = Math.min(100, room.crowdMeter + 15);
     }
 
-    // Store result
     currentRound.result = scores;
-
-    // Advance round or finish — clearArguments handles this
     clearArguments(room);
 
-    // Determine overall game winner if finished
     if (room.status === "finished") {
       room.winner =
         room.players.p1.score > room.players.p2.score ? "p1"
@@ -234,7 +221,6 @@ Respond with ONLY valid JSON, no markdown fences, no explanation text:
       room.status = "debating";
     }
 
-    // Emit scores — client handles phase transition
     io.to(room.code).emit("game:scores", { scores, room });
 
   } catch (err) {
@@ -273,6 +259,51 @@ io.on("connection", (socket) => {
     if (result.bothReady && room.status !== "judging") {
       judgeRound(room);
     }
+  });
+
+  // ── REMATCH FLOW ─────────────────────────────────────────────────
+
+  // Player A clicks "Rematch" — notify Player B
+  socket.on("room:rematch-request", ({ roomCode }) => {
+    if (!roomCode) return;
+    const room = getRoomByCode(roomCode);
+    if (!room) return;
+    // Broadcast to the other player only
+    socket.to(roomCode).emit("room:rematch-request");
+    console.log(`🔄 Rematch requested in room ${roomCode}`);
+  });
+
+  // Player B accepts — reset room and start fresh lobby
+  socket.on("room:rematch-accept", ({ roomCode }) => {
+    if (!roomCode) return;
+    const room = getRoomByCode(roomCode);
+    if (!room) return;
+
+    // Reset room state for a new game (keep players + topic)
+    room.rounds = [{ round: 1 }];
+    room.currentRound = 1;
+    room.status = "debating";
+    room.winner = null;
+    room.crowdMeter = 50;
+    room.players.p1.score = 0;
+    room.players.p2.score = 0;
+    room.players.p1.totalLogic = 0;
+    room.players.p1.totalCreativity = 0;
+    room.players.p1.totalPersuasion = 0;
+    room.players.p2.totalLogic = 0;
+    room.players.p2.totalCreativity = 0;
+    room.players.p2.totalPersuasion = 0;
+
+    console.log(`✅ Rematch accepted in room ${roomCode} — resetting game`);
+    io.to(roomCode).emit("room:rematch-start", { room });
+  });
+
+  // Player B declines — notify Player A then both go home
+  socket.on("room:rematch-decline", ({ roomCode }) => {
+    if (!roomCode) return;
+    // Tell the requester their rematch was declined
+    socket.to(roomCode).emit("room:rematch-declined");
+    console.log(`❌ Rematch declined in room ${roomCode}`);
   });
 
   socket.on("disconnect", () => {

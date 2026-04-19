@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState } from "react";
 import { useGameStore } from "../store/gameStore";
 import { useRoom } from "../hooks/useRoom";
 import CrowdMeter from "../components/CrowdMeter";
-import { Trophy, RotateCcw, RefreshCw, Crown, Swords, Star, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Trophy, RotateCcw, RefreshCw, Crown, Swords, Star, ThumbsUp, ThumbsDown, Loader2, X } from "lucide-react";
 
 // ── Particle burst ────────────────────────────────────────────────
 function Particles({ color }) {
@@ -82,10 +82,8 @@ function StatBar({ label, myVal, oppVal, myColor, oppColor, delay = 0 }) {
 }
 
 // ── Debate side badge ─────────────────────────────────────────────
-// p1 is always FOR the topic, p2 is always AGAINST
 function DebateSideBadge({ playerKey }) {
   const isFor = playerKey === "p1";
-
   return (
     <div
       className="flex items-center gap-1 px-2 py-0.5 rounded-full mt-1 mb-2"
@@ -126,14 +124,9 @@ function PlayerCard({ playerKey, player, score, roundsWon, isWinner, isDraw, col
         transform: shown ? "translateY(0)" : `translateY(${side === "left" ? "-20px" : "20px"})`,
       }}
     >
-      {/* Avatar */}
       <div
         className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-display mb-3 border-2"
-        style={{
-          background: color + "22",
-          borderColor: color + "66",
-          color,
-        }}
+        style={{ background: color + "22", borderColor: color + "66", color }}
       >
         {(player?.name || "?")[0].toUpperCase()}
       </div>
@@ -143,7 +136,6 @@ function PlayerCard({ playerKey, player, score, roundsWon, isWinner, isDraw, col
         {isMe && <span className="text-white/30 ml-1">(you)</span>}
       </p>
 
-      {/* ── FOR / AGAINST badge ── */}
       <DebateSideBadge playerKey={playerKey} />
 
       {isWinner && !isDraw && (
@@ -153,13 +145,11 @@ function PlayerCard({ playerKey, player, score, roundsWon, isWinner, isDraw, col
         </div>
       )}
 
-      {/* Score */}
       <div className="font-display leading-none my-2" style={{ fontSize: "3.5rem", color }}>
         {score ?? 0}
       </div>
       <p className="font-mono text-xs text-white/30 uppercase tracking-widest">total pts</p>
 
-      {/* Rounds won */}
       <div className="flex gap-1 mt-3">
         {Array.from({ length: 3 }).map((_, i) => (
           <Star
@@ -240,10 +230,113 @@ function RoundCard({ round, myRole, index }) {
   );
 }
 
+// ── Rematch modal (shown to the player who RECEIVES the request) ──
+function RematchIncomingModal({ opponentName, topic, onAccept, onDecline }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
+      <div
+        className="arena-card w-full max-w-sm p-6 text-center"
+        style={{ borderColor: "rgba(124,58,237,0.5)", boxShadow: "0 0 60px rgba(124,58,237,0.2)" }}
+      >
+        <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+          style={{ background: "rgba(124,58,237,0.15)", border: "2px solid rgba(124,58,237,0.4)" }}>
+          <RefreshCw size={24} className="text-purple-400" />
+        </div>
+
+        <h3 className="font-display text-2xl text-white tracking-widest mb-1">REMATCH?</h3>
+        <p className="text-white/40 text-xs font-mono mb-3">
+          <span className="text-purple-300">{opponentName || "Your opponent"}</span> wants a rematch
+        </p>
+
+        <div className="px-3 py-2 rounded-lg mb-5 text-xs font-mono text-white/30 uppercase tracking-widest"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+          {topic}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onDecline}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-95 border border-white/10 text-white/50 hover:text-white"
+            style={{ background: "rgba(255,255,255,0.04)" }}
+          >
+            <X size={14} />
+            Decline
+          </button>
+          <button
+            onClick={onAccept}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-95"
+            style={{ background: "linear-gradient(135deg, #7c3aed, #5b21b6)", color: "white" }}
+          >
+            <RefreshCw size={14} />
+            Accept
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Waiting modal (shown to the player who SENT the request) ──────
+function RematchWaitingModal({ onCancel }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
+      <div
+        className="arena-card w-full max-w-xs p-6 text-center"
+        style={{ borderColor: "rgba(124,58,237,0.4)" }}
+      >
+        <Loader2 size={32} className="text-purple-400 animate-spin mx-auto mb-4" />
+        <h3 className="font-display text-xl text-white tracking-widest mb-1">WAITING...</h3>
+        <p className="text-white/40 text-xs font-mono mb-5">Rematch request sent to opponent</p>
+        <button
+          onClick={onCancel}
+          className="text-xs text-white/30 hover:text-red-400 transition-colors font-mono uppercase tracking-widest"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Declined modal (shown when opponent says no) ──────────────────
+function RematchDeclinedModal({ opponentName, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
+      <div
+        className="arena-card w-full max-w-xs p-6 text-center"
+        style={{ borderColor: "rgba(248,113,113,0.4)" }}
+      >
+        <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+          style={{ background: "rgba(248,113,113,0.1)", border: "2px solid rgba(248,113,113,0.3)" }}>
+          <X size={24} className="text-red-400" />
+        </div>
+        <h3 className="font-display text-xl text-white tracking-widest mb-1">DECLINED</h3>
+        <p className="text-white/40 text-xs font-mono mb-5">
+          <span className="text-red-300">{opponentName || "Opponent"}</span> doesn't want a rematch
+        </p>
+        <button
+          onClick={onClose}
+          className="w-full py-3 rounded-xl text-sm font-semibold transition-all hover:opacity-90 active:scale-95 border border-white/10 text-white/60 hover:text-white"
+          style={{ background: "rgba(255,255,255,0.04)" }}
+        >
+          Go to Main Menu
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main ──────────────────────────────────────────────────────────
 export default function FinalScreen() {
-  const { room, myRole, resetGame } = useGameStore();
-  const { requestRematch } = useRoom();
+  const {
+    room, myRole, resetGame,
+    rematchRequested, rematchIncoming, rematchDeclined,
+    setRematchRequested, setRematchDeclined,
+  } = useGameStore();
+  const { requestRematch, acceptRematch, declineRematch } = useRoom();
   const [titleShown, setTitleShown] = useState(false);
 
   useEffect(() => {
@@ -258,12 +351,11 @@ export default function FinalScreen() {
   const p2 = players?.p2 || {};
   const isP1 = myRole === "p1";
 
-  // From viewer's perspective: you=blue, opp=red
   const myColor = "#00aaff";
   const oppColor = "#ff2d55";
   const myPlayer = isP1 ? p1 : p2;
   const oppPlayer = isP1 ? p2 : p1;
-  const myPlayerKey = myRole;           // "p1" or "p2"
+  const myPlayerKey = myRole;
   const oppPlayerKey = isP1 ? "p2" : "p1";
   const myScore = isP1 ? (p1.score ?? 0) : (p2.score ?? 0);
   const oppScore = isP1 ? (p2.score ?? 0) : (p1.score ?? 0);
@@ -283,7 +375,6 @@ export default function FinalScreen() {
   const p1RoundsWon = rounds.filter((r) => r?.result?.roundWinner === "p1").length;
   const p2RoundsWon = rounds.filter((r) => r?.result?.roundWinner === "p2").length;
 
-  // Headline message
   const headline = isDraw ? "IT'S A DRAW" : iWon ? "VICTORY!" : "DEFEAT";
   const headlineColor = isDraw ? "#ffd700" : iWon ? "#4ade80" : "#f87171";
   const subline = isDraw
@@ -292,8 +383,40 @@ export default function FinalScreen() {
     ? "Your arguments carried the day."
     : `${winnerPlayer?.name || "Opponent"} won the debate.`;
 
+  // Cancel rematch request (before opponent responds)
+  const handleCancelRematch = () => {
+    setRematchRequested(false);
+    // Also notify server so opponent's incoming request disappears
+    const { getSocket } = require("../hooks/useSocket");
+    const socket = getSocket();
+    if (socket && room?.code) {
+      socket.emit("room:rematch-decline", { roomCode: room.code });
+    }
+  };
+
   return (
     <div className="min-h-screen arena-bg text-white relative overflow-x-hidden">
+
+      {/* ── MODALS ── */}
+      {rematchIncoming && (
+        <RematchIncomingModal
+          opponentName={oppPlayer?.name}
+          topic={topic}
+          onAccept={acceptRematch}
+          onDecline={declineRematch}
+        />
+      )}
+
+      {rematchRequested && !rematchIncoming && (
+        <RematchWaitingModal onCancel={handleCancelRematch} />
+      )}
+
+      {rematchDeclined && (
+        <RematchDeclinedModal
+          opponentName={oppPlayer?.name}
+          onClose={() => { setRematchDeclined(false); resetGame(); }}
+        />
+      )}
 
       {/* Particle burst for winner */}
       {!isDraw && <Particles color={winnerColor} />}
@@ -326,9 +449,7 @@ export default function FinalScreen() {
 
           <p className="text-white/40 text-sm font-mono">{subline}</p>
 
-          <div
-            className="mt-3 mx-auto max-w-sm text-xs font-mono text-white/20 uppercase tracking-widest px-4 py-2 rounded-full border border-white/10"
-          >
+          <div className="mt-3 mx-auto max-w-sm text-xs font-mono text-white/20 uppercase tracking-widest px-4 py-2 rounded-full border border-white/10">
             {topic}
           </div>
         </div>
@@ -371,7 +492,6 @@ export default function FinalScreen() {
 
         {/* ── STAT BARS ── */}
         <div className="arena-card p-5 mb-6">
-          {/* Header labels */}
           <div className="flex justify-between mb-4">
             <span className="font-mono text-xs uppercase tracking-widest" style={{ color: myColor }}>
               {myPlayer.name || "You"} (you)
@@ -428,7 +548,8 @@ export default function FinalScreen() {
         >
           <button
             onClick={requestRematch}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all hover:opacity-90 active:scale-95"
+            disabled={rematchRequested}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-sm transition-all hover:opacity-90 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "linear-gradient(135deg, #7c3aed, #5b21b6)", color: "white" }}
           >
             <RefreshCw size={15} />

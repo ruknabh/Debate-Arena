@@ -87,22 +87,13 @@ export function useSocket() {
       setIsStreaming(true);
     };
 
-    // KEY FIX: Do NOT call resetRound() here.
-    // resetRound() clears lastScores which the results screen needs to display.
-    // Instead only update room + lastScores + phase.
-    // The user will trigger resetRound() themselves when clicking "Next Round".
     const onScores = ({ scores, room }) => {
       const store = useGameStore.getState();
-
-      // Update room state (has new scores, currentRound already advanced by server)
       store.setRoom(room);
       store.setGame(room);
       store.setIsStreaming(false);
-
-      // Store scores for display — DO NOT clear them here
       store.setLastScores(scores);
 
-      // Transition to results or final
       if (room.status === "finished") {
         store.setPhase("final");
       } else {
@@ -145,12 +136,31 @@ export function useSocket() {
       setPhase("final");
     };
 
+    // ── REMATCH EVENTS ──────────────────────────────────────────────
+
+    // Opponent wants a rematch — show confirmation modal to me
+    const onRematchRequest = () => {
+      const store = useGameStore.getState();
+      store.setRematchIncoming(true);
+    };
+
+    // Opponent accepted my request — start the new game
     const onRematchStart = ({ room }) => {
       const store = useGameStore.getState();
       store.setRoom(room);
       store.setGame(room);
       store.resetRound();
-      store.setPhase("debate");
+      store.setRematchRequested(false);
+      store.setRematchIncoming(false);
+      store.setRematchDeclined(false);
+      store.setPhase("lobby");
+    };
+
+    // Opponent declined — show message then let me leave
+    const onRematchDeclined = () => {
+      const store = useGameStore.getState();
+      store.setRematchRequested(false);
+      store.setRematchDeclined(true);
     };
 
     socket.on("room:joined", onJoined);
@@ -161,7 +171,9 @@ export function useSocket() {
     socket.on("game:arg-submitted", onArgSubmitted);
     socket.on("game:error", onError);
     socket.on("room:opponent-left", onOpponentLeft);
+    socket.on("room:rematch-request", onRematchRequest);
     socket.on("room:rematch-start", onRematchStart);
+    socket.on("room:rematch-declined", onRematchDeclined);
 
     return () => {
       socket.off("room:joined", onJoined);
@@ -172,7 +184,9 @@ export function useSocket() {
       socket.off("game:arg-submitted", onArgSubmitted);
       socket.off("game:error", onError);
       socket.off("room:opponent-left", onOpponentLeft);
+      socket.off("room:rematch-request", onRematchRequest);
       socket.off("room:rematch-start", onRematchStart);
+      socket.off("room:rematch-declined", onRematchDeclined);
     };
   }, [roomCode]);
 

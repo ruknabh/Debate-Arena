@@ -30,13 +30,11 @@ export function useRoom() {
     }
 
     socket.emit("room:submit-arg", { roomCode, argument });
-
-    // Optimistic update (UI responsiveness)
     setMyArgSubmitted(true);
   };
 
   // ─────────────────────────────
-  // REMATCH
+  // REMATCH — REQUEST
   // ─────────────────────────────
   const requestRematch = () => {
     const socket = getSocket();
@@ -46,7 +44,36 @@ export function useRoom() {
       return;
     }
 
-    socket.emit("room:rematch", { roomCode });
+    const store = useGameStore.getState();
+    store.setRematchRequested(true);
+    socket.emit("room:rematch-request", { roomCode });
+  };
+
+  // ─────────────────────────────
+  // REMATCH — ACCEPT
+  // ─────────────────────────────
+  const acceptRematch = () => {
+    const socket = getSocket();
+
+    if (!socket || !roomCode) return;
+
+    socket.emit("room:rematch-accept", { roomCode });
+  };
+
+  // ─────────────────────────────
+  // REMATCH — DECLINE
+  // ─────────────────────────────
+  const declineRematch = () => {
+    const socket = getSocket();
+
+    if (!socket || !roomCode) return;
+
+    socket.emit("room:rematch-decline", { roomCode });
+
+    // My side: close the modal and go home
+    const store = useGameStore.getState();
+    store.setRematchIncoming(false);
+    store.resetGame();
   };
 
   // ─────────────────────────────
@@ -71,6 +98,8 @@ export function useRoom() {
   return {
     submitArgument,
     requestRematch,
+    acceptRematch,
+    declineRematch,
     joinSocketRoom,
   };
 }
