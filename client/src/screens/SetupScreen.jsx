@@ -5,7 +5,7 @@ import { useRoom } from "../hooks/useRoom";
 import { getSocket } from "../hooks/useSocket";
 import { Swords, Zap, Trophy } from "lucide-react";
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 
 const SUGGESTED_TOPICS = [
   "AI will replace human creativity",
@@ -34,28 +34,17 @@ export default function SetupScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ SAFE SOCKET
   const getSocketId = () => {
     const socket = getSocket();
     return socket?.id;
   };
 
-  // ─────────────────────────────
-  // CREATE ROOM (FIXED)
-  // ─────────────────────────────
   const handleStart = async () => {
-    if (!topic.trim()) {
-      return setError("Enter a debate topic");
-    }
-
-    if (!name.trim()) {
-      return setError("Enter your name");
-    }
+    if (!topic.trim()) return setError("Enter a debate topic");
+    if (!name.trim()) return setError("Enter your name");
 
     const socketId = getSocketId();
-    if (!socketId) {
-      return setError("Not connected to server");
-    }
+    if (!socketId) return setError("Not connected to server");
 
     setLoading(true);
     setError("");
@@ -73,8 +62,7 @@ export default function SetupScreen() {
       setRoom(res.data.room);
 
       joinSocketRoom(res.data.roomCode);
-
-      setPhase("lobby"); // 🔥 correct flow
+      setPhase("lobby");
     } catch (err) {
       setError(err.response?.data?.error || "Failed to create room");
     } finally {
@@ -84,25 +72,15 @@ export default function SetupScreen() {
 
   return (
     <div className="min-h-screen arena-bg flex flex-col items-center justify-center p-6 text-white">
-
-      {/* HEADER */}
       <div className="text-center mb-10">
         <h1 className="text-5xl font-bold">DEBATE ARENA</h1>
-
         <div className="flex justify-center gap-6 mt-4 text-xs text-white/40">
-          <span className="flex items-center gap-1">
-            <Zap size={12} /> AI Judge
-          </span>
-          <span className="flex items-center gap-1">
-            <Trophy size={12} /> 3 Rounds
-          </span>
+          <span className="flex items-center gap-1"><Zap size={12} /> AI Judge</span>
+          <span className="flex items-center gap-1"><Trophy size={12} /> 3 Rounds</span>
         </div>
       </div>
 
-      {/* CARD */}
       <div className="arena-card w-full max-w-xl p-6">
-
-        {/* NAME */}
         <input
           className="arena-input w-full mb-4 px-4 py-3"
           placeholder="Enter your name"
@@ -110,7 +88,6 @@ export default function SetupScreen() {
           onChange={(e) => setName(e.target.value)}
         />
 
-        {/* TOPIC */}
         <textarea
           className="arena-input w-full p-4 h-24"
           placeholder="Enter debate topic..."
@@ -118,7 +95,6 @@ export default function SetupScreen() {
           onChange={(e) => setTopic(e.target.value)}
         />
 
-        {/* SUGGESTED */}
         <div className="flex flex-wrap gap-2 mt-3">
           {SUGGESTED_TOPICS.map((t, i) => (
             <button
@@ -131,12 +107,8 @@ export default function SetupScreen() {
           ))}
         </div>
 
-        {/* ERROR */}
-        {error && (
-          <p className="text-red-400 mt-3 text-sm">{error}</p>
-        )}
+        {error && <p className="text-red-400 mt-3 text-sm">{error}</p>}
 
-        {/* BUTTON */}
         <button
           onClick={handleStart}
           disabled={loading}

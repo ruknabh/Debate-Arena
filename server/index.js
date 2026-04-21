@@ -25,11 +25,15 @@ const {
 const app = express();
 const server = http.createServer(app);
 
+// ─────────────────────────────────────────────
+// CORS — allow local dev + production frontend
+// ─────────────────────────────────────────────
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:3000",
-];
+  process.env.FRONTEND_URL,          // e.g. https://debate-arena.vercel.app
+].filter(Boolean);                   // removes undefined if not set
 
 const io = new Server(server, {
   cors: {
@@ -40,6 +44,14 @@ const io = new Server(server, {
 
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
+
+// ─────────────────────────────────────────────
+// HEALTH CHECK — Render uses this to confirm
+// the service is alive
+// ─────────────────────────────────────────────
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 /* =========================
    REST ROUTES
@@ -263,23 +275,19 @@ io.on("connection", (socket) => {
 
   // ── REMATCH FLOW ─────────────────────────────────────────────────
 
-  // Player A clicks "Rematch" — notify Player B
   socket.on("room:rematch-request", ({ roomCode }) => {
     if (!roomCode) return;
     const room = getRoomByCode(roomCode);
     if (!room) return;
-    // Broadcast to the other player only
     socket.to(roomCode).emit("room:rematch-request");
     console.log(`🔄 Rematch requested in room ${roomCode}`);
   });
 
-  // Player B accepts — reset room and start fresh lobby
   socket.on("room:rematch-accept", ({ roomCode }) => {
     if (!roomCode) return;
     const room = getRoomByCode(roomCode);
     if (!room) return;
 
-    // Reset room state for a new game (keep players + topic)
     room.rounds = [{ round: 1 }];
     room.currentRound = 1;
     room.status = "debating";
@@ -298,10 +306,8 @@ io.on("connection", (socket) => {
     io.to(roomCode).emit("room:rematch-start", { room });
   });
 
-  // Player B declines — notify Player A then both go home
   socket.on("room:rematch-decline", ({ roomCode }) => {
     if (!roomCode) return;
-    // Tell the requester their rematch was declined
     socket.to(roomCode).emit("room:rematch-declined");
     console.log(`❌ Rematch declined in room ${roomCode}`);
   });

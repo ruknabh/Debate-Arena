@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { useGameStore } from "../store/gameStore";
 
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
+
 let socketInstance = null;
 
 export function useSocket() {
@@ -24,7 +26,7 @@ export function useSocket() {
   // INIT SOCKET (ONLY ONCE)
   useEffect(() => {
     if (!socketInstance) {
-      socketInstance = io("http://localhost:3001", {
+      socketInstance = io(SERVER_URL, {
         transports: ["websocket"],
       });
     }
@@ -138,13 +140,11 @@ export function useSocket() {
 
     // ── REMATCH EVENTS ──────────────────────────────────────────────
 
-    // Opponent wants a rematch — show confirmation modal to me
     const onRematchRequest = () => {
       const store = useGameStore.getState();
       store.setRematchIncoming(true);
     };
 
-    // Opponent accepted my request — start the new game
     const onRematchStart = ({ room }) => {
       const store = useGameStore.getState();
       store.setRoom(room);
@@ -156,7 +156,6 @@ export function useSocket() {
       store.setPhase("lobby");
     };
 
-    // Opponent declined — show message then let me leave
     const onRematchDeclined = () => {
       const store = useGameStore.getState();
       store.setRematchRequested(false);

@@ -5,7 +5,7 @@ import { useRoom } from "../hooks/useRoom";
 import { getSocket } from "../hooks/useSocket";
 import { ArrowLeft, Loader2, Swords, Zap, Trophy, Users } from "lucide-react";
 
-const API = "http://localhost:3001";
+const API = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 
 const SUGGESTED_TOPICS = [
   "AI will replace human creativity",
@@ -37,14 +37,13 @@ export default function HomeScreen() {
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [inQueue, setInQueue] = useState(false);  // true once Find Match is pressed
+  const [inQueue, setInQueue] = useState(false);
 
   const getSocketId = () => getSocket()?.id;
 
   const clearError = () => setError("");
 
   const goBack = async () => {
-    // If we're in the queue, leave it first
     if (inQueue) {
       try {
         await axios.post(`${API}/api/room/queue/leave`, { socketId: getSocketId() });
@@ -56,7 +55,6 @@ export default function HomeScreen() {
     setError("");
   };
 
-  // Disable main-menu buttons until name is typed
   const nameEntered = name.trim().length > 0;
 
   // ───────────── CREATE ROOM ─────────────
@@ -131,15 +129,13 @@ export default function HomeScreen() {
     setIsMatchmaking(true);
 
     try {
-      const res = await axios.post(`${API}/api/room/queue`, {
+      await axios.post(`${API}/api/room/queue`, {
         playerName: name.trim(),
         socketId,
       });
 
       setMyName(name.trim());
       setInQueue(true);
-
-      // If already matched instantly, the socket "match:found" event handles the rest
     } catch {
       setError("Matchmaking failed. Try again.");
       setIsMatchmaking(false);
@@ -163,11 +159,9 @@ export default function HomeScreen() {
     </div>
   );
 
-  // ───────────── UI ─────────────
   return (
     <div className="min-h-screen arena-bg flex flex-col items-center justify-center p-6 text-white">
 
-      {/* HEADER — only on main menu */}
       {!mode && (
         <div className="text-center mb-10">
           <h1 className="text-5xl font-bold tracking-widest">DEBATE ARENA</h1>
@@ -185,7 +179,6 @@ export default function HomeScreen() {
       {/* ── MAIN MENU ── */}
       {!mode && (
         <div className="arena-card w-full max-w-sm p-6">
-          {/* NAME — required before anything else */}
           <input
             className="arena-input w-full mb-5 px-4 py-3 text-sm"
             placeholder="Enter your name to begin"
@@ -194,7 +187,6 @@ export default function HomeScreen() {
             maxLength={24}
           />
 
-          {/* Name hint */}
           {!nameEntered && (
             <p className="text-white/25 text-xs font-mono text-center mb-4 -mt-2">
               ↑ Enter your name first
@@ -307,7 +299,7 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* ── QUICK MATCH / MATCHMAKING ── */}
+      {/* ── QUICK MATCH ── */}
       {mode === "stranger" && (
         <div className="arena-card w-full max-w-sm p-6">
           <BackHeader title="Quick Match" />
