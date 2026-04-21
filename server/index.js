@@ -13,7 +13,7 @@ const {
   submitArgument,
   clearArguments,
   handleDisconnect,
-} = require("./roomManager");
+} = require("./roommanager");
 
 const {
   addToQueue,

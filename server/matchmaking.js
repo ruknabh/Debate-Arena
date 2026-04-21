@@ -1,4 +1,4 @@
-const { createRoom, joinRoom } = require("./roomManager");
+const { createRoom, joinRoom } = require("./roommanager");
 
 // Queue: [{ socketId, playerName }]
 const queue = [];
